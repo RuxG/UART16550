@@ -5,6 +5,7 @@
    * Author: Grigorie Ruxandra <ruxi.grigorie@gmail.com>
    * Author: Orzata Miruna Narcisa <mirunaorzata21@gmail.com>
    */
+	int test = 1;
   struct uart16550_dev {
      struct cdev cdev;
      /*TODO */
