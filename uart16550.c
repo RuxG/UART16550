@@ -11,6 +11,8 @@
      /*TODO */
   };
   static struct uart16550_dev devs[MAX_NUMBER_DEVICES];
+  
+  int test_conflict = 1;
 
   static int uart16550_open(struct inode *inode, struct file *file)
   {
