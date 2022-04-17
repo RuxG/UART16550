@@ -1,0 +1,1 @@
+cmd_/home/miruna/Desktop/SO2/linux/tools/labs/skels/./assignments/2-uart/UART16550/modules.order := {   echo /home/miruna/Desktop/SO2/linux/tools/labs/skels/./assignments/2-uart/UART16550/uart16550.ko; :; } | awk '!x[$$0]++' - > /home/miruna/Desktop/SO2/linux/tools/labs/skels/./assignments/2-uart/UART16550/modules.order
