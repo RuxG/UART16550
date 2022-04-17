@@ -109,10 +109,11 @@ uart16550_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 		(struct uart16550_dev *) file->private_data;
 	
 	int ret = 0;
+	// TODO verify -> struct uart16550_line_info
 
 	switch (cmd) {
 	case UART16550_IOCTL_SET_LINE:
-		// change communication parameters
+		// TODO change communication parameters
 		break;
 	default:
 		ret = -EINVAL;
@@ -133,7 +134,7 @@ static const struct file_operations uart16550_fops = {
 irqreturn_t uart16550_interrupt_handler(int irq_no, void *dev_id)
 {
 	struct uart16550_dev *my_data = (struct uart16550_dev *) dev_id;
- 
+
 	/* if interrupt is not for this device (shared interrupts) */
 	/* return IRQ_NONE;*/
 	/* clear interrupt-pending bit */
@@ -142,20 +143,23 @@ irqreturn_t uart16550_interrupt_handler(int irq_no, void *dev_id)
 	return IRQ_HANDLED;
 }
 
-static int init_char_dev(int dev_id, const char *dev_name, int minor)
+static int init_char_dev(const char *dev_name, int start_minor, int nr_minors)
 {
 	int err = 0;
+	int i;
 
-	/* register char device region for major and 1 minor */
-	err = register_chrdev_region(MKDEV(major, minor), 1, dev_name);
+	/* register char device region for major and nr minors */
+	err = register_chrdev_region(MKDEV(major, start_minor), nr_minors, dev_name);
 	if (err != 0) {
 		pr_err("%s register_chrdev_region failed: %d\n", dev_name, err);
 		return err;
 	}
 
-	/* init and add cdev to kernel core */
-	cdev_init(&devs[dev_id].cdev, &uart16550_fops);
-	cdev_add(&devs[dev_id].cdev, MKDEV(major, minor), 1);
+	for (i = 0; i < nr_minors; i++) {
+		/* init and add cdev to kernel core */
+		cdev_init(&devs[i].cdev, &uart16550_fops);
+		cdev_add(&devs[i].cdev, MKDEV(major, i), 1);
+	}
 
 	return err;
 }
@@ -190,27 +194,21 @@ static int __init uart16550_init(void)
 {
 	int err;
 	// TODO initialize communication with com1 and com2 serial ports (control registers)
-	// TODO /dev/uart0, /dev/uart1, /dev/uart10
 
 	switch (option) {
 	case OPTION_BOTH:
 		pr_info("option both");
-		err = init_char_dev(0, "com1", COM1_MINOR);
+		err = init_char_dev("uart16550", COM1_MINOR, 2);
 		if (err != 0) {
 			goto out;
 		}
 
-		err = init_char_dev(1, "com2", COM2_MINOR);
+		err = init_io_region("uart16550", COM1_BASEPORT);
 		if (err != 0) {
 			goto out_unregister_chrdev_com1;
 		}
 
-		err = init_io_region("com1", COM1_BASEPORT);
-		if (err != 0) {
-			goto out_unregister_chrdev_com1;
-		}
-
-		err = init_io_region("com2", COM2_BASEPORT);
+		err = init_io_region("uart16550", COM2_BASEPORT);
 		if (err != 0) {
 			goto out_release_io_regions_com1;
 		}
@@ -228,12 +226,12 @@ static int __init uart16550_init(void)
 		break;
 	case OPTION_COM1:
 		pr_info("option com1");
-		err = init_char_dev(0, "com1", COM1_MINOR);
+		err = init_char_dev("uart16550", COM1_MINOR, 1);
 		if (err != 0) {
 			goto out;
 		}
 
-		err = init_io_region("com1", COM1_BASEPORT);
+		err = init_io_region("uart16550", COM1_BASEPORT);
 		if (err != 0) {
 			goto out_unregister_chrdev_com1;
 		}
@@ -246,17 +244,17 @@ static int __init uart16550_init(void)
 		break;
 	case OPTION_COM2:
 		pr_info("option com2");
-		err = init_char_dev(1, "com2", COM2_MINOR);
+		err = init_char_dev("uart16550", COM2_MINOR, 1);
 		if (err != 0) {
 			goto out;
 		}
 
-		err = init_io_region("com2", COM2_BASEPORT);
+		err = init_io_region("uart16550", COM2_BASEPORT);
 		if (err != 0) {
 			goto out_unregister_chrdev_com2;
 		}
 		
-		err = init_irq_handler(1, "com2", IRQ_COM2);
+		err = init_irq_handler(0, "com2", IRQ_COM2);
 		if (err != 0) {
 			goto out_unregister_and_release_com2;
 		}
@@ -267,6 +265,7 @@ static int __init uart16550_init(void)
 		goto out;
 	}
 
+// TODO verifica ce e mai jos
 out_unregister_chrdev_com2:
 	unregister_chrdev_region(MKDEV(major, COM2_MINOR), 1);
 	goto out;
@@ -284,11 +283,9 @@ out_unregister_and_release_com2:
 out_free_irq1:
 	free_irq(IRQ_COM1, &devs[0]);
 out_release_io_regions_com1_com2:
-	release_region(COM1_BASEPORT, NR_PORTS);
-out_release_io_regions_com1:
 	release_region(COM2_BASEPORT, NR_PORTS);
-out_unregister_chrdev_com1_com2:
-	unregister_chrdev_region(MKDEV(major, COM2_MINOR), 1);
+out_release_io_regions_com1:
+	release_region(COM1_BASEPORT, NR_PORTS);
 out_unregister_chrdev_com1:
 	unregister_chrdev_region(MKDEV(major, COM1_MINOR), 1);
 out:
@@ -304,8 +301,7 @@ static void __exit uart16550_exit(void)
 		cdev_del(&devs[1].cdev);
 
 		/* unregister char device region, for major and 1 minor */
-		unregister_chrdev_region(MKDEV(major, COM1_MINOR), 1);
-		unregister_chrdev_region(MKDEV(major, COM2_MINOR), 1);
+		unregister_chrdev_region(MKDEV(major, COM1_MINOR), 2);
 
 		/* release I/O ports */
 		release_region(COM1_BASEPORT, NR_PORTS);
@@ -324,10 +320,10 @@ static void __exit uart16550_exit(void)
 
 		break;
 	case OPTION_COM2:
-		cdev_del(&devs[1].cdev);
+		cdev_del(&devs[0].cdev);
 		unregister_chrdev_region(MKDEV(major, COM2_MINOR), 1);
 		release_region(COM2_BASEPORT, NR_PORTS);
-		free_irq(IRQ_COM2, &devs[1]);
+		free_irq(IRQ_COM2, &devs[0]);
 
 		break;
 	default:
