@@ -397,7 +397,7 @@ generic_test(const char *reader, const char *writer, int speed_set,
 		sprintf(cbuf, "insmod %s.ko", reader);
 		fatal_test(dbuf, system(cbuf), 0);
 	}
-
+	 
 	gen_params(&uli, speed_set);
 	fd0 = open(UART0, O_WRONLY);
 	if (fd0 == -1)
@@ -406,9 +406,9 @@ generic_test(const char *reader, const char *writer, int speed_set,
 	if (fd1 == -1)
 		fail("open " UART1);
 	err |= test("ioctl reader",
-			ioctl(fd1, UART16550_IOCTL_SET_LINE, &uli), 0);
+			ioctl(fd1, UART16550_IOCTL_SET_LINE, uli), 0);
 	err |= test("ioctl writer",
-			ioctl(fd0, UART16550_IOCTL_SET_LINE, &uli), 0);
+			ioctl(fd0, UART16550_IOCTL_SET_LINE, uli), 0);
 
 	for (i = 0; i < num_tests; i++) {
 		sprintf(dbuf, "test %02d", i + 1);

@@ -36,6 +36,11 @@
 #define UART16550_PAR_EVEN		0x18
 #define UART16550_PAR_STICK		0x20
 
+#define UART_DLL			0x00	/* Out: Divisor Latch Low */
+#define UART_LCR			3		/* Out: Line Control Register */
+#define UART_LCR_DLAB		0x80	/* Divisor latch access bit */
+#define UART_IER			1	    /* Out: Interrupt Enable Register */
+
 #endif
 
 #define	UART16550_IOCTL_SET_LINE	1
@@ -43,6 +48,5 @@
 struct uart16550_line_info {
 	unsigned char baud, len, par, stop;
 };
-
 
 #endif
