@@ -46,6 +46,9 @@
 #define not_test(d, v, e)		do_test((d), (v), (e), 1, 0)
 #define fatal_test(d, v, e)		do_test((d), (v), (e), 0, 1)
 
+int my_module_reader = 0;
+int my_module_both = 0;
+
 static int
 do_test(const char *description, int value, int expected, int negate, int fatal)
 {
@@ -193,8 +196,10 @@ test2(void)
 		fail("open " UART0);
 #define ioctl_test(n)	test("invalid ioctl " XSTR((n)), \
 		ioctl(fd, UART16550_IOCTL_SET_LINE, (n)), -1)
+
 	err |= ioctl_test(0xdeadbeef);
 	err |= ioctl_test(0x1337cafe);
+
 #undef ioctl_test
 	err |= test("invalid ioctl wrong operation", ioctl(fd, 0xffff), -1);
 	close(fd);
@@ -405,10 +410,29 @@ generic_test(const char *reader, const char *writer, int speed_set,
 	fd1 = open(UART1, O_RDONLY);
 	if (fd1 == -1)
 		fail("open " UART1);
-	err |= test("ioctl reader",
+
+	/*err |= test("ioctl reader",
 			ioctl(fd1, UART16550_IOCTL_SET_LINE, uli), 0);
 	err |= test("ioctl writer",
+			ioctl(fd0, UART16550_IOCTL_SET_LINE, uli), 0);*/
+			
+	if (my_module_both || my_module_reader) {
+		err |= test("ioctl reader",
+			ioctl(fd1, UART16550_IOCTL_SET_LINE, uli), 0);
+	} else {
+		err |= test("ioctl reader",
+			ioctl(fd1, UART16550_IOCTL_SET_LINE, &uli), 0);
+	}
+
+	if (my_module_both || !my_module_reader) {
+		err |= test("ioctl writer",
 			ioctl(fd0, UART16550_IOCTL_SET_LINE, uli), 0);
+	} else {
+		err |= test("ioctl writer",
+			ioctl(fd0, UART16550_IOCTL_SET_LINE, &uli), 0);
+	}
+	
+	
 
 	for (i = 0; i < num_tests; i++) {
 		sprintf(dbuf, "test %02d", i + 1);
@@ -430,6 +454,9 @@ generic_test(const char *reader, const char *writer, int speed_set,
 		sprintf(cbuf, "rmmod %s.ko", reader);
 		fatal_test(dbuf, system(cbuf), 0);
 	}
+
+	my_module_both = 0;
+	my_module_reader = 0;
 
 	return err;
 }
@@ -453,26 +480,35 @@ test3(void)
 	rd = MODULE_NAME;
 	wr = SOLUTION_NAME;
 	test_title("Test 3. Read, small speed");
+	my_module_reader = 1;
 	return generic_test(rd, wr, 0, 5);
 }
 
 static int
 test4(void)
 {
+	my_module_both = 0;
+	my_module_reader = 0;
+
 	const char *rd, *wr;
 
 	rd = SOLUTION_NAME;
 	wr = MODULE_NAME;
 	test_title("Test 4. Write, small speed");
+	my_module_reader = 0;
 	return generic_test(rd, wr, 0, 5);
 }
 
 static int
 test5(void)
-{
+{	
+	my_module_both = 0;
+	my_module_reader = 0;
+
 	const char *rd, *wr;
 
 	rd = wr = MODULE_NAME;
+	my_module_both = 1;
 	test_title("Test 5. Back-to-back, small speed");
 	return generic_test(rd, wr, 0, 5);
 }
@@ -480,19 +516,29 @@ test5(void)
 static int
 test6(void)
 {
+	my_module_both = 0;
+	my_module_reader = 0;
 	const char *rd, *wr;
 
 	choose_one(rd, wr);
 	test_title("Test 6. Read/Write, medium speed");
+	if (strncmp(rd, MODULE_NAME, strlen(MODULE_NAME)) == 0) {
+		my_module_reader = 1;
+	} else {
+		my_module_reader = 0;
+	}
 	return generic_test(rd, wr, 1, 5);
 }
 
 static int
 test7(void)
-{
+{	
+	my_module_both = 0;
+	my_module_reader = 0;
 	const char *rd, *wr;
 
 	rd = wr = MODULE_NAME;
+	my_module_both = 1;
 	test_title("Test 7. Back-to-back, medium speed");
 	return generic_test(rd, wr, 1, 5);
 }
@@ -500,9 +546,16 @@ test7(void)
 static int
 test8(void)
 {
+	my_module_both = 0;
+	my_module_reader = 0;
 	const char *rd, *wr;
 
 	choose_one(rd, wr);
+	if (strncmp(rd, MODULE_NAME, strlen(MODULE_NAME)) == 0) {
+		my_module_reader = 1;
+	} else {
+		my_module_reader = 0;
+	}
 	test_title("Test 8. Read/Write, high speed");
 	return generic_test(rd, wr, 2, 5);
 }
@@ -510,9 +563,12 @@ test8(void)
 static int
 test9(void)
 {
+	my_module_both = 0;
+	my_module_reader = 0;
 	const char *rd, *wr;
 
 	rd = wr = MODULE_NAME;
+	my_module_both = 1;
 	test_title("Test 9. Back-to-back, high speed");
 	return generic_test(rd, wr, 2, 5);
 }
