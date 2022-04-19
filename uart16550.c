@@ -364,10 +364,46 @@ static int init_irq_handler(int dev_id, const char *dev_name, int irq_line)
 	return err;
 }
 
+static void uart16550_init_registers(void)
+{
+	/* Configure line parameters */
+	uart16550_line_info_set_baud(UART_DEFAULT_BAUD);
+	uart16550_line_info_set_len(UART_DEFAULT_LEN);
+	uart16550_line_info_set_parity(UART_DEFAULT_PARITY);
+	uart16550_line_info_set_stop(UART_DEFAULT_STOP);
+
+	/* Configure FIFO control register: enable FIFO, set trigger level to 8 bits */
+	if (option == OPTION_COM1 || option == OPTION_BOTH) {
+		outb(COM1_BASEPORT + UART_FCR, UART_FCR_ENABLE_FIFO | UART_FCR_CLEAR_RCVR |
+									   UART_FCR_CLEAR_XMIT | UART_FCR_R_TRIG_10);
+	}
+	if (option == OPTION_COM2 || option == OPTION_BOTH) {
+		outb(COM2_BASEPORT + UART_FCR, UART_FCR_ENABLE_FIFO | UART_FCR_CLEAR_RCVR |
+									   UART_FCR_CLEAR_XMIT | UART_FCR_R_TRIG_10);
+	}
+
+	/* Configure Modem Control to enable interrupts */
+	if (option == OPTION_COM1 || option == OPTION_BOTH) {
+		outb(COM1_BASEPORT + UART_MCR, UART_MCR_OUT2 | UART_MCR_RTS | UART_MCR_DTR);
+	}
+	if (option == OPTION_COM2 || option == OPTION_BOTH) {
+		outb(COM2_BASEPORT + UART_MCR, UART_MCR_OUT2| UART_MCR_RTS | UART_MCR_DTR);
+	}
+
+	/* Configure Interrupts: enable Received data available and
+	   Transmitter Holding Register Empty interrupts */
+	if (option == OPTION_COM1 || option == OPTION_BOTH) {
+		outb(COM1_BASEPORT + UART_IER, UART_IER_RDI | UART_IER_THRI);
+	}
+	if (option == OPTION_COM2 || option == OPTION_BOTH) {
+		outb(COM2_BASEPORT + UART_IER, UART_IER_RDI | UART_IER_THRI);
+	}
+
+}
+
 static int __init uart16550_init(void)
 {
 	int err;
-	// TODO initialize communication with com1 and com2 serial ports (control registers)
 
 	switch (option) {
 	case OPTION_BOTH:
@@ -396,29 +432,32 @@ static int __init uart16550_init(void)
 		if (err != 0) {
 			goto out_free_irq1;
 		}
-
 		break;
+
 	case OPTION_COM1:
 		pr_info("option com1");
-		err = init_char_dev("uart0", COM1_MINOR, 1);
+		err = init_char_dev("uart16550", COM1_MINOR, 1);
 		if (err != 0) {
+			pr_info("Cant register I tried\n");
 			goto out;
 		}
 
 		err = init_io_region("uart16550", COM1_BASEPORT);
 		if (err != 0) {
+			pr_info("Cant register I tried 2\n");
 			goto out_unregister_chrdev_com1;
 		}
 
 		err = init_irq_handler(0, "com1", IRQ_COM1);
 		if (err != 0) {
+			pr_info("Cant register I tried 3\n");
 			goto out_unregister_and_release_com1;
 		}
 
 		break;
 	case OPTION_COM2:
 		pr_info("option com2");
-		err = init_char_dev("uart1", COM2_MINOR, 1);
+		err = init_char_dev("uart16550", COM2_MINOR, 1);
 		if (err != 0) {
 			goto out;
 		}
@@ -438,6 +477,9 @@ static int __init uart16550_init(void)
 		err = -EINVAL;
 		goto out;
 	}
+
+	uart16550_init_registers();
+	
 
 // TODO verifica ce e mai jos
 out_unregister_chrdev_com2:
