@@ -48,7 +48,10 @@
 #define UART_FCR_ENABLE_FIFO	0x01	/* Enable the FIFO */
 #define UART_FCR_CLEAR_RCVR		0x02 	/* Clear the RCVR FIFO */
 #define UART_FCR_CLEAR_XMIT		0x04 	/* Clear the XMIT FIFO */
+#define UART_FCR_R_TRIG_00		0x00	/* Receive Interrupt trigger level */
+#define UART_FCR_R_TRIG_01		0x40	/* Receive Interrupt trigger level */
 #define UART_FCR_R_TRIG_10		0x80    /* Receive Interrupt trigger level */
+
 
 #define UART_IER			1			/* Out: Interrupt Enable Register */
 #define UART_IER_MSI		0x08 		/* Enable Modem status interrupt */
@@ -60,6 +63,15 @@
 #define UART_MCR_OUT2		0x08 	/* Out1 complement */
 #define UART_MCR_RTS		0x02 	/* RTS complement */
 #define UART_MCR_DTR		0x01 	/* DTR complement */
+
+
+#define UART_IIR			2		/* In:  Interrupt ID Register */
+#define UART_IIR_NO_INT		0x01 	/* No interrupts pending */
+#define UART_IIR_ID			0x0e 	/* Mask for the interrupt ID */
+#define UART_IIR_MSI		0x00 	/* Modem status interrupt */
+#define UART_IIR_THRI		0x02 	/* Transmitter holding register empty */
+#define UART_IIR_RDI		0x04 	/* Receiver data interrupt */
+#define UART_IIR_RLSI		0x06 	/* Receiver line status interrupt */
 
 #endif
 

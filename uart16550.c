@@ -237,6 +237,44 @@ static int uart16550_line_info_set_stop(unsigned char stop)
 	return ret;
 }
 
+static void configure_fifo(void)
+{
+	/* Configure FIFO control register: enable FIFO, set trigger level to 1 bit */
+	if (option == OPTION_COM1 || option == OPTION_BOTH) {
+		outb(COM1_BASEPORT + UART_FCR, UART_FCR_ENABLE_FIFO | UART_FCR_CLEAR_RCVR |
+									UART_FCR_CLEAR_XMIT | UART_FCR_R_TRIG_00);
+	}
+
+	if (option == OPTION_COM2 || option == OPTION_BOTH) {
+		outb(COM2_BASEPORT + UART_FCR, UART_FCR_ENABLE_FIFO | UART_FCR_CLEAR_RCVR |
+									UART_FCR_CLEAR_XMIT | UART_FCR_R_TRIG_00);
+	}
+}
+
+static void configure_modem(void)
+{
+	/* Configure Modem Control to enable interrupts */
+	if (option == OPTION_COM1 || option == OPTION_BOTH) {
+		outb(COM1_BASEPORT + UART_MCR, UART_MCR_OUT2 | UART_MCR_RTS | UART_MCR_DTR);
+	}
+
+	if (option == OPTION_COM2 || option == OPTION_BOTH) {
+		outb(COM2_BASEPORT + UART_MCR, UART_MCR_OUT2| UART_MCR_RTS | UART_MCR_DTR);
+	}
+}
+
+static void configure_interrupts(void)
+{
+	/* Configure Interrupts: enable Received data available and
+		Transmitter Holding Register Empty interrupts */
+	if (option == OPTION_COM1 || option == OPTION_BOTH) {
+		outb(COM1_BASEPORT + UART_IER, UART_IER_RDI | UART_IER_THRI);
+	}
+
+	if (option == OPTION_COM2 || option == OPTION_BOTH) {
+		outb(COM2_BASEPORT + UART_IER, UART_IER_RDI | UART_IER_THRI);
+	}
+}
 
 static long
 uart16550_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
@@ -288,6 +326,12 @@ uart16550_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 			break;
 		}
 
+		//configure_fifo();
+		
+		//configure_modem();
+
+		configure_interrupts();
+
 		break;
 	default:
 		ret = -EINVAL;
@@ -308,7 +352,7 @@ static const struct file_operations uart16550_fops = {
 irqreturn_t uart16550_interrupt_handler(int irq_no, void *dev_id)
 {
 	struct uart16550_dev *my_data = (struct uart16550_dev *) dev_id;
-
+	
 	/* if interrupt is not for this device (shared interrupts) */
 	/* return IRQ_NONE;*/
 	/* clear interrupt-pending bit */
@@ -372,42 +416,22 @@ static void uart16550_init_registers(void)
 	uart16550_line_info_set_parity(UART_DEFAULT_PARITY);
 	uart16550_line_info_set_stop(UART_DEFAULT_STOP);
 
-	/* Configure FIFO control register: enable FIFO, set trigger level to 8 bits */
-	if (option == OPTION_COM1 || option == OPTION_BOTH) {
-		outb(COM1_BASEPORT + UART_FCR, UART_FCR_ENABLE_FIFO | UART_FCR_CLEAR_RCVR |
-									   UART_FCR_CLEAR_XMIT | UART_FCR_R_TRIG_10);
-	}
-	if (option == OPTION_COM2 || option == OPTION_BOTH) {
-		outb(COM2_BASEPORT + UART_FCR, UART_FCR_ENABLE_FIFO | UART_FCR_CLEAR_RCVR |
-									   UART_FCR_CLEAR_XMIT | UART_FCR_R_TRIG_10);
-	}
+	configure_fifo();
 
-	/* Configure Modem Control to enable interrupts */
-	if (option == OPTION_COM1 || option == OPTION_BOTH) {
-		outb(COM1_BASEPORT + UART_MCR, UART_MCR_OUT2 | UART_MCR_RTS | UART_MCR_DTR);
-	}
-	if (option == OPTION_COM2 || option == OPTION_BOTH) {
-		outb(COM2_BASEPORT + UART_MCR, UART_MCR_OUT2| UART_MCR_RTS | UART_MCR_DTR);
-	}
+	configure_modem();
 
-	/* Configure Interrupts: enable Received data available and
-	   Transmitter Holding Register Empty interrupts */
-	if (option == OPTION_COM1 || option == OPTION_BOTH) {
-		outb(COM1_BASEPORT + UART_IER, UART_IER_RDI | UART_IER_THRI);
-	}
-	if (option == OPTION_COM2 || option == OPTION_BOTH) {
-		outb(COM2_BASEPORT + UART_IER, UART_IER_RDI | UART_IER_THRI);
-	}
-
+	configure_interrupts();
 }
 
 static int __init uart16550_init(void)
 {
 	int err;
+	int num_ports;
 
 	switch (option) {
 	case OPTION_BOTH:
 		pr_info("option both");
+		num_ports = 2;
 		err = init_char_dev("uart16550", COM1_MINOR, 2);
 		if (err != 0) {
 			goto out;
@@ -435,6 +459,7 @@ static int __init uart16550_init(void)
 		break;
 
 	case OPTION_COM1:
+		num_ports = 1;
 		pr_info("option com1");
 		err = init_char_dev("uart16550", COM1_MINOR, 1);
 		if (err != 0) {
@@ -455,7 +480,9 @@ static int __init uart16550_init(void)
 		}
 
 		break;
+
 	case OPTION_COM2:
+		num_ports = 1;
 		pr_info("option com2");
 		err = init_char_dev("uart16550", COM2_MINOR, 1);
 		if (err != 0) {
@@ -503,7 +530,7 @@ out_release_io_regions_com1_com2:
 out_release_io_regions_com1:
 	release_region(COM1_BASEPORT, NR_PORTS);
 out_unregister_chrdev_com1:
-	unregister_chrdev_region(MKDEV(major, COM1_MINOR), 1);
+	unregister_chrdev_region(MKDEV(major, COM1_MINOR), num_ports);
 out:
 	return err;
 }
