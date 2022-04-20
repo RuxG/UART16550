@@ -1,3 +1,9 @@
+/* SPDX-License-Identifier: GPL
+ * uart16550.h - UART16550 header driver
+ *
+ * Author: Grigorie Ruxandra <ruxi.grigorie@gmail.com>
+ * Author: Orzata Miruna Narcisa <mirunaorzata21@gmail.com>
+ */
 #ifndef _UART16550_H
 #define _UART16550_H
 
@@ -62,40 +68,40 @@
 
 #define UART_FCR				2		/* Out: FIFO Control Register */
 #define UART_FCR_ENABLE_FIFO	0x01	/* Enable the FIFO */
-#define UART_FCR_CLEAR_RCVR		0x02 	/* Clear the RCVR FIFO */
-#define UART_FCR_CLEAR_XMIT		0x04 	/* Clear the XMIT FIFO */
+#define UART_FCR_CLEAR_RCVR		0x02	/* Clear the RCVR FIFO */
+#define UART_FCR_CLEAR_XMIT		0x04	/* Clear the XMIT FIFO */
 #define UART_FCR_R_TRIG_00		0x00	/* Receive Interrupt trigger level */
 #define UART_FCR_R_TRIG_01		0x40	/* Receive Interrupt trigger level */
 #define UART_FCR_R_TRIG_10		0x80    /* Receive Interrupt trigger level */
 
 
 #define UART_IER			1			/* Out: Interrupt Enable Register */
-#define UART_IER_MSI		0x08 		/* Enable Modem status interrupt */
-#define UART_IER_RLSI		0x04 		/* Enable receiver line status interrupt */
-#define UART_IER_THRI		0x02 		/* Enable Transmitter holding register int. */
-#define UART_IER_RDI		0x01 		/* Enable receiver data interrupt */
+#define UART_IER_MSI		0x08		/* Enable Modem status interrupt */
+#define UART_IER_RLSI		0x04		/* Enable receiver line status interrupt */
+#define UART_IER_THRI		0x02		/* Enable Transmitter holding register int. */
+#define UART_IER_RDI		0x01		/* Enable receiver data interrupt */
 
 
 #define UART_IIR			2		/* In:  Interrupt ID Register */
-#define UART_IIR_NO_INT		0x01 	/* No interrupts pending */
-#define UART_IIR_ID			0x0e 	/* Mask for the interrupt ID */
-#define UART_IIR_MSI		0x00 	/* Modem status interrupt */
-#define UART_IIR_THRI		0x02 	/* Transmitter holding register empty */
-#define UART_IIR_RDI		0x04 	/* Receiver data interrupt */
-#define UART_IIR_RLSI		0x06 	/* Receiver line status interrupt */
-#define UART_IIR_TIMEOUT	12 		/* Receiver line status interrupt */
+#define UART_IIR_NO_INT		0x01	/* No interrupts pending */
+#define UART_IIR_ID			0x0e	/* Mask for the interrupt ID */
+#define UART_IIR_MSI		0x00	/* Modem status interrupt */
+#define UART_IIR_THRI		0x02	/* Transmitter holding register empty */
+#define UART_IIR_RDI		0x04	/* Receiver data interrupt */
+#define UART_IIR_RLSI		0x06	/* Receiver line status interrupt */
+#define UART_IIR_TIMEOUT	12		/* Receiver line status interrupt */
 
 #define UART_LCR			3		/* Out: Line Control Register */
 #define UART_LCR_DLAB		0x80	/* Divisor latch access bit */
 
 #define UART_LSR			5		/* In:  Line Status Register */
-#define UART_LSR_DR			0x01 	/* Receiver data ready */
-#define UART_LSR_THRE		0x20 	/* Transmit-hold-register empty */
+#define UART_LSR_DR			0x01	/* Receiver data ready */
+#define UART_LSR_THRE		0x20	/* Transmit-hold-register empty */
 
 #define UART_MCR			4		/* Out: Modem Control Register */
-#define UART_MCR_OUT2		0x08 	/* Out1 complement */
-#define UART_MCR_RTS		0x02 	/* RTS complement */
-#define UART_MCR_DTR		0x01 	/* DTR complement */
+#define UART_MCR_OUT2		0x08	/* Out1 complement */
+#define UART_MCR_RTS		0x02	/* RTS complement */
+#define UART_MCR_DTR		0x01	/* DTR complement */
 
 #define FIFO_SIZE			16		/* Number of bytes FIFO can hold */
 

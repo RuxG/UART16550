@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-2.0
+// SPDX-License-Identifier: GPL
   /*
    * uart16550.c - UART16550 driver
    *
@@ -34,7 +34,7 @@ struct uart16550_dev {
 	size_t put_idx_read, get_idx_read, put_idx_write, get_idx_write;
 	spinlock_t lock;
 	wait_queue_head_t wq_reads, wq_writes;
-}; 
+};
 
 static struct uart16550_dev devs[MAX_NUMBER_DEVICES];
 
@@ -100,10 +100,10 @@ static ssize_t uart16550_read(struct file *file,  char __user *user_buffer,
 
 		if (read_status == false)
 			break;
-		
+
 		if (put_user(c, &user_buffer[i]))
 			return -EFAULT;
-		
+
 		i++;
 		size--;
 	}
@@ -123,11 +123,11 @@ static ssize_t uart16550_write(struct file *file,
 	unsigned long flags;
 	bool write_status = true;
 
-	if (size <= 0) 
+	if (size <= 0)
 		return 0;
 
 	if (wait_event_interruptible(data->wq_writes, atomic_read(&data->write_buf_size) < BUFFER_SIZE))
-			return -ERESTARTSYS;
+		return -ERESTARTSYS;
 
 
 	while (size > 0) {
@@ -148,7 +148,7 @@ static ssize_t uart16550_write(struct file *file,
 
 	/* Data is available - enable write interrupt */
 	outb(inb(data->port_base_address + UART_IER) | UART_IER_THRI, data->port_base_address + UART_IER);
-	
+
 	return i;
 }
 
@@ -165,7 +165,7 @@ static int uart16550_line_info_set_baud(unsigned char baud)
 
 	for (i = 0; i < size; i++) {
 		if (baud == valid_baud[i]) {
-			
+
 			if (option == OPTION_COM1 || option == OPTION_BOTH) {
 				/* Turn off interrupts */
 				outb(0, COM1_BASEPORT + UART_IER);
@@ -191,7 +191,7 @@ static int uart16550_line_info_set_baud(unsigned char baud)
 				outb(baud, COM2_BASEPORT + UART_DLL);
 
 				/* Set DLAB OFF */
-				outb(inb(COM2_BASEPORT + UART_LCR)&(~UART_LCR_DLAB), COM2_BASEPORT + UART_LCR); 
+				outb(inb(COM2_BASEPORT + UART_LCR)&(~UART_LCR_DLAB), COM2_BASEPORT + UART_LCR);
 			}
 
 			ret = 0;
@@ -303,26 +303,23 @@ static void configure_fifo(void)
 static void configure_modem(void)
 {
 	/* Configure Modem Control to enable interrupts */
-	if (option == OPTION_COM1 || option == OPTION_BOTH) {
+	if (option == OPTION_COM1 || option == OPTION_BOTH)
 		outb(UART_MCR_OUT2 | UART_MCR_RTS | UART_MCR_DTR, COM1_BASEPORT + UART_MCR);
-	}
 
-	if (option == OPTION_COM2 || option == OPTION_BOTH) {
+	if (option == OPTION_COM2 || option == OPTION_BOTH)
 		outb(UART_MCR_OUT2 | UART_MCR_RTS | UART_MCR_DTR, COM2_BASEPORT + UART_MCR);
-	}
 }
 
 static void configure_interrupts(void)
 {
 	/* Configure Interrupts: enable Received data available and
-		Transmitter Holding Register Empty interrupts */
-	if (option == OPTION_COM1 || option == OPTION_BOTH) {
+	 *	Transmitter Holding Register Empty interrupts
+	 */
+	if (option == OPTION_COM1 || option == OPTION_BOTH)
 		outb(UART_IER_RDI, COM1_BASEPORT + UART_IER);
-	}
 
-	if (option == OPTION_COM2 || option == OPTION_BOTH) {
+	if (option == OPTION_COM2 || option == OPTION_BOTH)
 		outb(UART_IER_RDI, COM2_BASEPORT + UART_IER);
-	}
 }
 
 static long
@@ -330,7 +327,7 @@ uart16550_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 {
 	struct uart16550_dev *data =
 		(struct uart16550_dev *) file->private_data;
-	
+
 	struct uart16550_line_info uli;
 	int ret = 0;
 
@@ -351,7 +348,7 @@ uart16550_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 			pr_err("%s: ioctl invalid communication parameters: invalid len: %u.\n", MODULE_NAME, uli.len);
 			break;
 		}
-		
+
 		if (uart16550_line_info_set_parity(uli.par)) {
 			ret = -EINVAL;
 			pr_err("%s: ioctl invalid communication parameters: invalid parity: %u.\n", MODULE_NAME, uli.par);
@@ -389,9 +386,10 @@ irqreturn_t uart16550_interrupt_handler(int irq_no, void *dev_id)
 	struct uart16550_dev *my_data = (struct uart16550_dev *) dev_id;
 	int i;
 	unsigned char c;
-	
+
 	/* Interrupt pending */
 	unsigned int IIR = inb(my_data->port_base_address + UART_IIR);
+
 	if (!(IIR & UART_IIR_NO_INT)) {
 
 		unsigned char interrupt = IIR & UART_IIR_ID;
@@ -425,11 +423,11 @@ irqreturn_t uart16550_interrupt_handler(int irq_no, void *dev_id)
 		case UART_IIR_RDI:
 		case UART_IIR_TIMEOUT:
 
-			do { 
+			do {
 				c = inb(my_data->port_base_address + UART_LSR);
 				if (c & 1) {
 					spin_lock(&my_data->lock);
-					
+
 					if (atomic_read(&my_data->read_buf_size) == BUFFER_SIZE) {
 						spin_unlock(&my_data->lock);
 						break;
@@ -452,8 +450,8 @@ irqreturn_t uart16550_interrupt_handler(int irq_no, void *dev_id)
 	}
 
 	/* No interrupts pending */
-	outb(UART_IIR_NO_INT, my_data->port_base_address + UART_IIR);	
- 
+	outb(UART_IIR_NO_INT, my_data->port_base_address + UART_IIR);
+
 	return IRQ_HANDLED;
 }
 
@@ -533,32 +531,28 @@ static int __init uart16550_init(void)
 		devs[1].port_base_address = COM2_BASEPORT;
 		spin_lock_init(&devs[0].lock);
 		spin_lock_init(&devs[1].lock);
-	
+
 		num_ports = 2;
 		err = init_char_dev("uart16550", COM1_MINOR, 2);
-		if (err != 0) {
+		if (err != 0)
 			goto out;
-		}
 
 		err = init_io_region("uart16550", COM1_BASEPORT);
-		if (err != 0) {
+		if (err != 0)
 			goto out_unregister_chrdev_com1;
-		}
 
 		err = init_io_region("uart16550", COM2_BASEPORT);
-		if (err != 0) {
+		if (err != 0)
 			goto out_release_io_regions_com1;
-		}
-		
+
 		err = init_irq_handler(0, "com1", IRQ_COM1);
-		if (err != 0) {
+		if (err != 0)
 			goto out_release_io_regions_com1_com2;
-		}
 
 		err = init_irq_handler(1, "com2", IRQ_COM2);
-		if (err != 0) {
+		if (err != 0)
 			goto out_free_irq1;
-		}
+
 		break;
 
 	case OPTION_COM1:
@@ -567,19 +561,16 @@ static int __init uart16550_init(void)
 
 		num_ports = 1;
 		err = init_char_dev("uart16550", COM1_MINOR, 1);
-		if (err != 0) {
+		if (err != 0)
 			goto out;
-		}
 
 		err = init_io_region("uart16550", COM1_BASEPORT);
-		if (err != 0) {
+		if (err != 0)
 			goto out_unregister_chrdev_com1;
-		}
 
 		err = init_irq_handler(0, "com1", IRQ_COM1);
-		if (err != 0) {
+		if (err != 0)
 			goto out_unregister_and_release_com1;
-		}
 
 		break;
 
@@ -589,29 +580,26 @@ static int __init uart16550_init(void)
 
 		num_ports = 1;
 		err = init_char_dev("uart16550", COM2_MINOR, 1);
-		if (err != 0) {
+		if (err != 0)
 			goto out;
-		}
 
 		err = init_io_region("uart16550", COM2_BASEPORT);
-		if (err != 0) {
+		if (err != 0)
 			goto out_unregister_chrdev_com2;
-		}
-		
+
 		err = init_irq_handler(0, "com2", IRQ_COM2);
-		if (err != 0) {
+		if (err != 0)
 			goto out_unregister_and_release_com2;
-		}
 
 		break;
-		
+
 	default:
 		err = -EINVAL;
 		goto out;
 	}
 
 	uart16550_init_registers();
-	
+
 out_unregister_chrdev_com2:
 	unregister_chrdev_region(MKDEV(major, COM2_MINOR), 1);
 	goto out;
@@ -683,4 +671,4 @@ module_exit(uart16550_exit);
 MODULE_DESCRIPTION("UART16550 Driver");
 MODULE_AUTHOR("Grigorie Ruxandra <ruxi.grigorie@gmail.com");
 MODULE_AUTHOR("Orzata Miruna Narcisa <mirunaorzata21@gmail.com");
-MODULE_LICENSE("GPL-2.0");
+MODULE_LICENSE("GPL");
