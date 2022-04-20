@@ -44,12 +44,12 @@ module_param(option, int, 0);
 
 struct uart16550_dev {
 	struct cdev cdev;
-	int port_type;
+	int port_base_address;
 	char read_buf[BUFFER_SIZE];
 	char write_buf[BUFFER_SIZE];
 	atomic_t read_buf_size;
 	atomic_t write_buf_size;
-	size_t put_idx, get_idx;
+	size_t put_idx_read, get_idx_read, put_idx_write, get_idx_write;
 	spinlock_t lock;
 	wait_queue_head_t wq_reads, wq_writes;
 }; 
@@ -77,8 +77,8 @@ static bool get_char(char *c, struct uart16550_dev *data)
 {
 	/* get char from buffer; update size and get_idx */
 	if (atomic_read(&data->read_buf_size) > 0) {
-		*c = data->read_buf[data->get_idx];
-		data->get_idx = (data->get_idx + 1) % BUFFER_SIZE;
+		*c = data->read_buf[data->get_idx_read];
+		data->get_idx_read = (data->get_idx_read + 1) % BUFFER_SIZE;
 		atomic_dec(&data->read_buf_size);
 		return true;
 	}
@@ -90,8 +90,8 @@ static bool write_char(char c, struct uart16550_dev *data)
 {
 	/* write char to buffer; update size and put_idx */
 	if (atomic_read(&data->write_buf_size) < BUFFER_SIZE) {
-		data->write_buf[data->put_idx] = c;
-		data->put_idx = (data->put_idx + 1) % BUFFER_SIZE;
+		data->write_buf[data->put_idx_write] = c;
+		data->put_idx_write = (data->put_idx_write + 1) % BUFFER_SIZE;
 		atomic_inc(&data->write_buf_size);
 		return true;
 	}
@@ -138,7 +138,7 @@ static ssize_t uart16550_write(struct file *file,
 								const char __user *user_buffer,
 								size_t size, loff_t *offset)
 {
-	struct uart16550_dev *data =
+	struct  uart16550_dev *data =
 		(struct uart16550_dev *) file->private_data;
 
 	int i = 0;
@@ -149,6 +149,10 @@ static ssize_t uart16550_write(struct file *file,
 	// Un apel write blocant înseamnă că rutina de write apelată din user-space se va bloca
 	// până la scrierea a cel puţin un octet (buffer-ul de write din kernel este plin și
 	// nu se pot scrie date).
+
+	if (size <= 0) 
+		return 0;
+
 	if (wait_event_interruptible(data->wq_writes, atomic_read(&data->write_buf_size) < BUFFER_SIZE))
 			return -ERESTARTSYS;
 
@@ -167,8 +171,8 @@ static ssize_t uart16550_write(struct file *file,
 		size--;
 	}
 
-	// enable write interrupt
-
+	/* Data is available - enable write interrupt */
+	outb(data->port_base_address + UART_IER, inb(data->port_base_address + UART_IER) | UART_IER_THRI);
 
 	return i;
 }
@@ -338,11 +342,11 @@ static void configure_interrupts(void)
 	/* Configure Interrupts: enable Received data available and
 		Transmitter Holding Register Empty interrupts */
 	if (option == OPTION_COM1 || option == OPTION_BOTH) {
-		outb(COM1_BASEPORT + UART_IER, UART_IER_RDI | UART_IER_THRI);
+		outb(COM1_BASEPORT + UART_IER, UART_IER_RDI);
 	}
 
 	if (option == OPTION_COM2 || option == OPTION_BOTH) {
-		outb(COM2_BASEPORT + UART_IER, UART_IER_RDI | UART_IER_THRI);
+		outb(COM2_BASEPORT + UART_IER, UART_IER_RDI);
 	}
 }
 
@@ -385,9 +389,9 @@ uart16550_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 			break;
 		}
 
-		//configure_fifo();
+		configure_fifo();
 		
-		//configure_modem();
+		configure_modem();
 
 		configure_interrupts();
 
@@ -411,17 +415,79 @@ static const struct file_operations uart16550_fops = {
 irqreturn_t uart16550_interrupt_handler(int irq_no, void *dev_id)
 {
 	struct uart16550_dev *my_data = (struct uart16550_dev *) dev_id;
+	int i;
+	unsigned char c;
 	
+
+	pr_info("Interrupt\n");
+
+
 	/* if interrupt is not for this device (shared interrupts) */
 	/* return IRQ_NONE;*/
 	/* clear interrupt-pending bit */
 	/* read from device or write to device*/
-	int base_addr;
 
-	if (my_data->port_type == 0)
-		base_addr = COM1_BASEPORT;
-	else
-		base_addr = COM2_BASEPORT;
+	/* Interrupt pending */
+	if (!(inb(my_data->port_base_address + UART_IIR) & UART_IIR_NO_INT)) {
+
+		unsigned char interrupt = inb(my_data->port_base_address + UART_IIR) & UART_IIR_ID;
+
+		switch (interrupt) {
+		case UART_IIR_THRI:
+			pr_info("FIFO empty interrupt\n");
+
+			for (i = 0; i < FIFO_SIZE; i++) {
+
+				spin_lock(&my_data->lock);
+
+				/* Data is not available - disable write interrupt */
+				if (atomic_read(&my_data->write_buf_size) == 0) {
+					outb(my_data->port_base_address + UART_IER, inb(my_data->port_base_address + UART_IER) & ~UART_IER_THRI);
+					spin_unlock(&my_data->lock);
+					break;
+				}
+
+				outb(my_data->port_base_address, my_data->write_buf[my_data->get_idx_write]);
+				my_data->get_idx_write++;
+				my_data->get_idx_write = my_data->get_idx_write % BUFFER_SIZE;
+				atomic_dec(&my_data->write_buf_size);
+
+				spin_unlock(&my_data->lock);
+			}
+
+			wake_up(&(my_data->wq_writes));
+
+			break;
+		case UART_IIR_RDI:
+			pr_info("FIFO data available interrupt\n");
+
+			do { 
+				c = inb(my_data->port_base_address + UART_LSR);
+				if (c & 1) {
+					spin_lock(&my_data->lock);
+					
+					if (atomic_read(&my_data->read_buf_size) == BUFFER_SIZE) {
+						spin_unlock(&my_data->lock);
+						break;
+					}
+
+					my_data->read_buf[my_data->put_idx_read] = inb(my_data->port_base_address);
+					my_data->put_idx_read++;
+					my_data->put_idx_read = my_data->put_idx_read % BUFFER_SIZE;
+
+					atomic_inc(&(my_data->read_buf_size));
+
+					spin_unlock(&my_data->lock);
+				}
+			} while (c & 1);
+
+			wake_up(&(my_data->wq_reads));
+
+			break;
+		}
+	}
+
+	outb(my_data->port_base_address + UART_IIR, UART_IIR_NO_INT);	/* No interrupts pending */
 
 	// write interrupt
 	// TODO disable write interrupt when the kernel write_buffer is empty
@@ -537,8 +603,8 @@ static int __init uart16550_init(void)
 	switch (option) {
 	case OPTION_BOTH:
 		pr_info("option both");
-		devs[0].port_type = 0;
-		devs[1].port_type = 1;
+		devs[0].port_base_address = COM1_BASEPORT;
+		devs[1].port_base_address = COM2_BASEPORT;
 		spin_lock_init(&devs[0].lock);
 		spin_lock_init(&devs[1].lock);
 
@@ -570,7 +636,7 @@ static int __init uart16550_init(void)
 		break;
 
 	case OPTION_COM1:
-		devs[0].port_type = 0;
+		devs[0].port_base_address = COM1_BASEPORT;
 		spin_lock_init(&devs[0].lock);
 
 		num_ports = 1;
@@ -596,7 +662,7 @@ static int __init uart16550_init(void)
 		break;
 
 	case OPTION_COM2:
-		devs[0].port_type = 1;
+		devs[0].port_base_address = COM2_BASEPORT;
 		spin_lock_init(&devs[0].lock);
 
 		num_ports = 1;

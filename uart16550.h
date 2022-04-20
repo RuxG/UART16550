@@ -70,14 +70,16 @@
 #define UART_LCR			3		/* Out: Line Control Register */
 #define UART_LCR_DLAB		0x80	/* Divisor latch access bit */
 
-#define UART_LSR			5	/* In:  Line Status Register */
-#define UART_LSR_DR			0x01 /* Receiver data ready */
-#define UART_LSR_THRE		0x20 /* Transmit-hold-register empty */
+#define UART_LSR			5		/* In:  Line Status Register */
+#define UART_LSR_DR			0x01 	/* Receiver data ready */
+#define UART_LSR_THRE		0x20 	/* Transmit-hold-register empty */
 
 #define UART_MCR			4		/* Out: Modem Control Register */
 #define UART_MCR_OUT2		0x08 	/* Out1 complement */
 #define UART_MCR_RTS		0x02 	/* RTS complement */
 #define UART_MCR_DTR		0x01 	/* DTR complement */
+
+#define FIFO_SIZE			16		/* Number of bytes FIFO can hold */
 
 #endif
 
