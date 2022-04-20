@@ -18,24 +18,6 @@
 #include <linux/moduleparam.h>
 #include "uart16550.h"
 
-#define MODULE_NAME	"uart16550"
-
-#define DEFAULT_MAJOR	42
-#define DEFAULT_OPTION	OPTION_BOTH
-
-#define COM1_MINOR		0
-#define COM2_MINOR		1
-#define DEFAULT_MINOR   0
-
-#define COM1_BASEPORT	0x3f8
-#define COM2_BASEPORT	0x2f8
-#define NR_PORTS	8
-
-#define IRQ_COM1	4
-#define IRQ_COM2	3
-
-#define BUFFER_SIZE		1024
-
 static int major = DEFAULT_MAJOR;
 module_param(major, int, 0);
 
@@ -53,6 +35,7 @@ struct uart16550_dev {
 	spinlock_t lock;
 	wait_queue_head_t wq_reads, wq_writes;
 }; 
+
 static struct uart16550_dev devs[MAX_NUMBER_DEVICES];
 
 static int uart16550_open(struct inode *inode, struct file *file)
@@ -62,14 +45,12 @@ static int uart16550_open(struct inode *inode, struct file *file)
 	data = container_of(inode->i_cdev, struct uart16550_dev, cdev);
 
 	file->private_data = data;
-	pr_info("%s opened\n", MODULE_NAME);
 
 	return 0;
 }
 
 static int uart16550_release(struct inode *inode, struct file *file)
 {
-	pr_info("%s closed\n", MODULE_NAME);
 	return 0;
 }
 
@@ -109,10 +90,6 @@ static ssize_t uart16550_read(struct file *file,  char __user *user_buffer,
 	unsigned long flags;
 	bool read_status = true;
 
-	// Un apel read blocant înseamnă că rutina de read apelată din user-space se va bloca
-	// până la citirea a cel puţin un octet (buffer-ul de read din kernel este gol și
-	// nu se pot citi date).
-
 	if (wait_event_interruptible(data->wq_reads, atomic_read(&data->read_buf_size) > 0))
 		return -ERESTARTSYS;
 
@@ -146,15 +123,12 @@ static ssize_t uart16550_write(struct file *file,
 	unsigned long flags;
 	bool write_status = true;
 
-	// Un apel write blocant înseamnă că rutina de write apelată din user-space se va bloca
-	// până la scrierea a cel puţin un octet (buffer-ul de write din kernel este plin și
-	// nu se pot scrie date).
-
 	if (size <= 0) 
 		return 0;
 
 	if (wait_event_interruptible(data->wq_writes, atomic_read(&data->write_buf_size) < BUFFER_SIZE))
 			return -ERESTARTSYS;
+
 
 	while (size > 0) {
 		if (get_user(c, &user_buffer[i]))
@@ -164,6 +138,7 @@ static ssize_t uart16550_write(struct file *file,
 		write_status = write_char(c, data);
 		spin_unlock_irqrestore(&data->lock, flags);
 
+
 		if (write_status == false)
 			break;
 
@@ -172,8 +147,8 @@ static ssize_t uart16550_write(struct file *file,
 	}
 
 	/* Data is available - enable write interrupt */
-	outb(data->port_base_address + UART_IER, inb(data->port_base_address + UART_IER) | UART_IER_THRI);
-
+	outb(inb(data->port_base_address + UART_IER) | UART_IER_THRI, data->port_base_address + UART_IER);
+	
 	return i;
 }
 
@@ -183,7 +158,7 @@ static int uart16550_line_info_set_baud(unsigned char baud)
 	int size = 8;
 	int i;
 
-	unsigned char valid_baud[8] = { UART16550_BAUD_1200, UART16550_BAUD_2400,
+	unsigned char valid_baud[] = { UART16550_BAUD_1200, UART16550_BAUD_2400,
 								   UART16550_BAUD_4800, UART16550_BAUD_9600,
 								   UART16550_BAUD_19200, UART16550_BAUD_38400,
 								   UART16550_BAUD_56000, UART16550_BAUD_115200 };
@@ -193,30 +168,30 @@ static int uart16550_line_info_set_baud(unsigned char baud)
 			
 			if (option == OPTION_COM1 || option == OPTION_BOTH) {
 				/* Turn off interrupts */
-				outb(COM1_BASEPORT + UART_IER, 0);
+				outb(0, COM1_BASEPORT + UART_IER);
 
 				/* Set DLAB ON - enable baud generator divisor latches */
-				outb(COM1_BASEPORT + UART_LCR, UART_LCR_DLAB);
+				outb(UART_LCR_DLAB, COM1_BASEPORT + UART_LCR);
 
 				/* Set DLL - set baud divisor low byte */
-				outb(COM1_BASEPORT + UART_DLL, baud);
+				outb(baud, COM1_BASEPORT + UART_DLL);
 
 				/* Set DLAB OFF */
-				outb(COM1_BASEPORT + UART_LCR, inb(COM1_BASEPORT + UART_LCR)&(~UART_LCR_DLAB));
+				outb(inb(COM1_BASEPORT + UART_LCR)&(~UART_LCR_DLAB), COM1_BASEPORT + UART_LCR);
 			}
 
 			if (option == OPTION_COM2 || option == OPTION_BOTH) {
 				/* Turn off interrupts */
-				outb(COM2_BASEPORT + UART_IER, 0);
+				outb(0, COM2_BASEPORT + UART_IER);
 
 				/* Set DLAB ON - enable baud generator divisor latches */
-				outb(COM2_BASEPORT + UART_LCR, UART_LCR_DLAB);
+				outb(UART_LCR_DLAB, COM2_BASEPORT + UART_LCR);
 
 				/* Set DLL - set baud divisor low byte */
-				outb(COM2_BASEPORT + UART_DLL, baud);
+				outb(baud, COM2_BASEPORT + UART_DLL);
 
 				/* Set DLAB OFF */
-				outb(COM2_BASEPORT + UART_LCR, inb(COM2_BASEPORT + UART_LCR)&(~UART_LCR_DLAB)); 
+				outb(inb(COM2_BASEPORT + UART_LCR)&(~UART_LCR_DLAB), COM2_BASEPORT + UART_LCR); 
 			}
 
 			ret = 0;
@@ -239,12 +214,12 @@ static int uart16550_line_info_set_len(unsigned char len)
 
 			if (option == OPTION_COM1 || option == OPTION_BOTH) {
 				/* Set word length */
-				outb(COM1_BASEPORT + UART_LCR , inb(COM1_BASEPORT + UART_LCR) | len);
+				outb(inb(COM1_BASEPORT + UART_LCR) | len, COM1_BASEPORT + UART_LCR);
 			}
 
 			if (option == OPTION_COM2 || option == OPTION_BOTH) {
 				/* Set word length */
-				outb(COM2_BASEPORT + UART_LCR , inb(COM2_BASEPORT + UART_LCR) | len);
+				outb(inb(COM2_BASEPORT + UART_LCR) | len, COM2_BASEPORT + UART_LCR);
 			}
 
 			ret = 0;
@@ -267,12 +242,12 @@ static int uart16550_line_info_set_parity(unsigned char parity)
 
 			if (option == OPTION_COM1 || option == OPTION_BOTH) {
 				/* Set parity */
-				outb(COM1_BASEPORT + UART_LCR , inb(COM1_BASEPORT + UART_LCR) | parity);
+				outb(inb(COM1_BASEPORT + UART_LCR) | parity, COM1_BASEPORT + UART_LCR);
 			}
 
 			if (option == OPTION_COM2 || option == OPTION_BOTH) {
 				/* Set parity */
-				outb(COM2_BASEPORT + UART_LCR , inb(COM2_BASEPORT + UART_LCR) | parity);
+				outb(inb(COM2_BASEPORT + UART_LCR) | parity, COM2_BASEPORT + UART_LCR);
 			}
 
 			ret = 0;
@@ -295,12 +270,12 @@ static int uart16550_line_info_set_stop(unsigned char stop)
 
 			if (option == OPTION_COM1 || option == OPTION_BOTH) {
 				/* Set number of stop bits */
-				outb(COM1_BASEPORT + UART_LCR , inb(COM1_BASEPORT + UART_LCR) | stop);
+				outb(inb(COM1_BASEPORT + UART_LCR) | stop, COM1_BASEPORT + UART_LCR);
 			}
 
 			if (option == OPTION_COM2 || option == OPTION_BOTH) {
 				/* Set number of stop bits */
-				outb(COM2_BASEPORT + UART_LCR , inb(COM2_BASEPORT + UART_LCR) | stop);
+				outb(inb(COM2_BASEPORT + UART_LCR) | stop, COM2_BASEPORT + UART_LCR);
 			}
 
 			ret = 0;
@@ -315,13 +290,13 @@ static void configure_fifo(void)
 {
 	/* Configure FIFO control register: enable FIFO, set trigger level to 1 bit */
 	if (option == OPTION_COM1 || option == OPTION_BOTH) {
-		outb(COM1_BASEPORT + UART_FCR, UART_FCR_ENABLE_FIFO | UART_FCR_CLEAR_RCVR |
-									UART_FCR_CLEAR_XMIT | UART_FCR_R_TRIG_00);
+		outb(UART_FCR_ENABLE_FIFO | UART_FCR_CLEAR_RCVR | UART_FCR_CLEAR_XMIT
+									| UART_FCR_R_TRIG_00, COM1_BASEPORT + UART_FCR);
 	}
 
 	if (option == OPTION_COM2 || option == OPTION_BOTH) {
-		outb(COM2_BASEPORT + UART_FCR, UART_FCR_ENABLE_FIFO | UART_FCR_CLEAR_RCVR |
-									UART_FCR_CLEAR_XMIT | UART_FCR_R_TRIG_00);
+		outb(UART_FCR_ENABLE_FIFO | UART_FCR_CLEAR_RCVR | UART_FCR_CLEAR_XMIT
+									| UART_FCR_R_TRIG_00, COM2_BASEPORT + UART_FCR);
 	}
 }
 
@@ -329,11 +304,11 @@ static void configure_modem(void)
 {
 	/* Configure Modem Control to enable interrupts */
 	if (option == OPTION_COM1 || option == OPTION_BOTH) {
-		outb(COM1_BASEPORT + UART_MCR, UART_MCR_OUT2 | UART_MCR_RTS | UART_MCR_DTR);
+		outb(UART_MCR_OUT2 | UART_MCR_RTS | UART_MCR_DTR, COM1_BASEPORT + UART_MCR);
 	}
 
 	if (option == OPTION_COM2 || option == OPTION_BOTH) {
-		outb(COM2_BASEPORT + UART_MCR, UART_MCR_OUT2| UART_MCR_RTS | UART_MCR_DTR);
+		outb(UART_MCR_OUT2 | UART_MCR_RTS | UART_MCR_DTR, COM2_BASEPORT + UART_MCR);
 	}
 }
 
@@ -342,11 +317,11 @@ static void configure_interrupts(void)
 	/* Configure Interrupts: enable Received data available and
 		Transmitter Holding Register Empty interrupts */
 	if (option == OPTION_COM1 || option == OPTION_BOTH) {
-		outb(COM1_BASEPORT + UART_IER, UART_IER_RDI);
+		outb(UART_IER_RDI, COM1_BASEPORT + UART_IER);
 	}
 
 	if (option == OPTION_COM2 || option == OPTION_BOTH) {
-		outb(COM2_BASEPORT + UART_IER, UART_IER_RDI);
+		outb(UART_IER_RDI, COM2_BASEPORT + UART_IER);
 	}
 }
 
@@ -389,13 +364,10 @@ uart16550_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 			break;
 		}
 
-		configure_fifo();
-		
-		configure_modem();
-
 		configure_interrupts();
 
 		break;
+
 	default:
 		ret = -EINVAL;
 	}
@@ -418,23 +390,14 @@ irqreturn_t uart16550_interrupt_handler(int irq_no, void *dev_id)
 	int i;
 	unsigned char c;
 	
-
-	pr_info("Interrupt\n");
-
-
-	/* if interrupt is not for this device (shared interrupts) */
-	/* return IRQ_NONE;*/
-	/* clear interrupt-pending bit */
-	/* read from device or write to device*/
-
 	/* Interrupt pending */
-	if (!(inb(my_data->port_base_address + UART_IIR) & UART_IIR_NO_INT)) {
+	unsigned int IIR = inb(my_data->port_base_address + UART_IIR);
+	if (!(IIR & UART_IIR_NO_INT)) {
 
-		unsigned char interrupt = inb(my_data->port_base_address + UART_IIR) & UART_IIR_ID;
+		unsigned char interrupt = IIR & UART_IIR_ID;
 
 		switch (interrupt) {
 		case UART_IIR_THRI:
-			pr_info("FIFO empty interrupt\n");
 
 			for (i = 0; i < FIFO_SIZE; i++) {
 
@@ -442,12 +405,12 @@ irqreturn_t uart16550_interrupt_handler(int irq_no, void *dev_id)
 
 				/* Data is not available - disable write interrupt */
 				if (atomic_read(&my_data->write_buf_size) == 0) {
-					outb(my_data->port_base_address + UART_IER, inb(my_data->port_base_address + UART_IER) & ~UART_IER_THRI);
+					outb(inb(my_data->port_base_address + UART_IER) & ~UART_IER_THRI, my_data->port_base_address + UART_IER);
 					spin_unlock(&my_data->lock);
 					break;
 				}
 
-				outb(my_data->port_base_address, my_data->write_buf[my_data->get_idx_write]);
+				outb(my_data->write_buf[my_data->get_idx_write], my_data->port_base_address);
 				my_data->get_idx_write++;
 				my_data->get_idx_write = my_data->get_idx_write % BUFFER_SIZE;
 				atomic_dec(&my_data->write_buf_size);
@@ -458,8 +421,9 @@ irqreturn_t uart16550_interrupt_handler(int irq_no, void *dev_id)
 			wake_up(&(my_data->wq_writes));
 
 			break;
+
 		case UART_IIR_RDI:
-			pr_info("FIFO data available interrupt\n");
+		case UART_IIR_TIMEOUT:
 
 			do { 
 				c = inb(my_data->port_base_address + UART_LSR);
@@ -487,46 +451,8 @@ irqreturn_t uart16550_interrupt_handler(int irq_no, void *dev_id)
 		}
 	}
 
-	outb(my_data->port_base_address + UART_IIR, UART_IIR_NO_INT);	/* No interrupts pending */
-
-	// write interrupt
-	// TODO disable write interrupt when the kernel write_buffer is empty
-	// spinlock
-	// change write_buffer_size + put_idx
-	// spinlock
-	// wake_up(&my_data->wq_writes)
-
-
-	// read interrupt
-	// spinlock
-	// change read_buffer_size + get_idx
-	// spinlock
-	// wake_up(&my_data->wq_reads)
-
-
-	// base + 5
-	// interrupt status
-	// LSR
-	// THRI dezactivare
-
-	// outb(base_addr + UART_IIR, (inb(base_addr + UART_IIR)&(~UART_IIR_NO_INT)));	/* interrupts pending */
-	// int count = 0;
-	// do { c = inb(base_addr + UART_LSR);
-	// 		if (c & 1) {
-	// 			buffer_rec[count] = inb(base_addr);
-	// 			count++;
-	// 		}
-	// } while (c & 1);
-
-	// how to transmit a byte:
-	// 1. Read the Line Status Register - LSR
-	// 2. Transmit Holding Register is Empty? (yes) - THR bit 5
-	// 3. Write byte to the Transmitter Data Register
-
-	// how to receive a byte:
-	// 1. Read the Line Status Register - LCR
-	// 2. Received Data is Ready? (yes) - RDR bit 0
-	// 3. Read byte from the Receiver Data Register
+	/* No interrupts pending */
+	outb(UART_IIR_NO_INT, my_data->port_base_address + UART_IIR);	
  
 	return IRQ_HANDLED;
 }
@@ -602,12 +528,12 @@ static int __init uart16550_init(void)
 
 	switch (option) {
 	case OPTION_BOTH:
-		pr_info("option both");
+
 		devs[0].port_base_address = COM1_BASEPORT;
 		devs[1].port_base_address = COM2_BASEPORT;
 		spin_lock_init(&devs[0].lock);
 		spin_lock_init(&devs[1].lock);
-
+	
 		num_ports = 2;
 		err = init_char_dev("uart16550", COM1_MINOR, 2);
 		if (err != 0) {
@@ -640,22 +566,18 @@ static int __init uart16550_init(void)
 		spin_lock_init(&devs[0].lock);
 
 		num_ports = 1;
-		pr_info("option com1");
 		err = init_char_dev("uart16550", COM1_MINOR, 1);
 		if (err != 0) {
-			pr_info("Cant register I tried\n");
 			goto out;
 		}
 
 		err = init_io_region("uart16550", COM1_BASEPORT);
 		if (err != 0) {
-			pr_info("Cant register I tried 2\n");
 			goto out_unregister_chrdev_com1;
 		}
 
 		err = init_irq_handler(0, "com1", IRQ_COM1);
 		if (err != 0) {
-			pr_info("Cant register I tried 3\n");
 			goto out_unregister_and_release_com1;
 		}
 
@@ -666,7 +588,6 @@ static int __init uart16550_init(void)
 		spin_lock_init(&devs[0].lock);
 
 		num_ports = 1;
-		pr_info("option com2");
 		err = init_char_dev("uart16550", COM2_MINOR, 1);
 		if (err != 0) {
 			goto out;
@@ -683,6 +604,7 @@ static int __init uart16550_init(void)
 		}
 
 		break;
+		
 	default:
 		err = -EINVAL;
 		goto out;
@@ -690,8 +612,6 @@ static int __init uart16550_init(void)
 
 	uart16550_init_registers();
 	
-
-// TODO verifica ce e mai jos
 out_unregister_chrdev_com2:
 	unregister_chrdev_region(MKDEV(major, COM2_MINOR), 1);
 	goto out;

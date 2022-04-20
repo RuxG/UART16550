@@ -10,6 +10,24 @@
 
 #define MAX_NUMBER_DEVICES		2
 
+#define MODULE_NAME	"uart16550"
+
+#define DEFAULT_MAJOR	42
+#define DEFAULT_OPTION	OPTION_BOTH
+
+#define COM1_MINOR		0
+#define COM2_MINOR		1
+#define DEFAULT_MINOR   0
+
+#define COM1_BASEPORT	0x3f8
+#define COM2_BASEPORT	0x2f8
+#define NR_PORTS	8
+
+#define IRQ_COM1	4
+#define IRQ_COM2	3
+
+#define BUFFER_SIZE		1024
+
 #ifndef _UART16550_REGS_H
 
 #define UART16550_BAUD_1200		96
@@ -65,7 +83,7 @@
 #define UART_IIR_THRI		0x02 	/* Transmitter holding register empty */
 #define UART_IIR_RDI		0x04 	/* Receiver data interrupt */
 #define UART_IIR_RLSI		0x06 	/* Receiver line status interrupt */
-
+#define UART_IIR_TIMEOUT	12 		/* Receiver line status interrupt */
 
 #define UART_LCR			3		/* Out: Line Control Register */
 #define UART_LCR_DLAB		0x80	/* Divisor latch access bit */
@@ -84,6 +102,8 @@
 #endif
 
 #define	UART16550_IOCTL_SET_LINE	1
+
+
 
 struct uart16550_line_info {
 	unsigned char baud, len, par, stop;
