@@ -44,15 +44,15 @@ module_param(option, int, 0);
 
 struct uart16550_dev {
 	struct cdev cdev;
+	int port_type;
 	char read_buf[BUFFER_SIZE];
 	char write_buf[BUFFER_SIZE];
-	int read_buf_size;
-	int write_buf_size;
+	atomic_t read_buf_size;
+	atomic_t write_buf_size;
 	size_t put_idx, get_idx;
-	bool empty;
-	bool full;
-	// TODO wait_queue_head_t, atomic_t?
-};
+	spinlock_t lock;
+	wait_queue_head_t wq_reads, wq_writes;
+}; 
 static struct uart16550_dev devs[MAX_NUMBER_DEVICES];
 
 static int uart16550_open(struct inode *inode, struct file *file)
@@ -73,18 +73,65 @@ static int uart16550_release(struct inode *inode, struct file *file)
 	return 0;
 }
 
+static bool get_char(char *c, struct uart16550_dev *data)
+{
+	/* get char from buffer; update size and get_idx */
+	if (atomic_read(&data->read_buf_size) > 0) {
+		*c = data->read_buf[data->get_idx];
+		data->get_idx = (data->get_idx + 1) % BUFFER_SIZE;
+		atomic_dec(&data->read_buf_size);
+		return true;
+	}
+
+	return false;
+}
+
+static bool write_char(char c, struct uart16550_dev *data)
+{
+	/* write char to buffer; update size and put_idx */
+	if (atomic_read(&data->write_buf_size) < BUFFER_SIZE) {
+		data->write_buf[data->put_idx] = c;
+		data->put_idx = (data->put_idx + 1) % BUFFER_SIZE;
+		atomic_inc(&data->write_buf_size);
+		return true;
+	}
+
+	return false;
+}
+
 static ssize_t uart16550_read(struct file *file,  char __user *user_buffer,
 							size_t size, loff_t *offset)
 {
 	struct uart16550_dev *data =
 		(struct uart16550_dev *) file->private_data;
-	size_t to_read = 0;
+	int i = 0;
+	char c;
+	unsigned long flags;
+	bool read_status = true;
 
 	// Un apel read blocant înseamnă că rutina de read apelată din user-space se va bloca
 	// până la citirea a cel puţin un octet (buffer-ul de read din kernel este gol și
 	// nu se pot citi date).
 
-	return to_read;
+	if (wait_event_interruptible(data->wq_reads, atomic_read(&data->read_buf_size) > 0))
+		return -ERESTARTSYS;
+
+	while (size > 0) {
+		spin_lock_irqsave(&data->lock, flags);
+		read_status = get_char(&c, data);
+		spin_unlock_irqrestore(&data->lock, flags);
+
+		if (read_status == false)
+			break;
+		
+		if (put_user(c, &user_buffer[i]))
+			return -EFAULT;
+		
+		i++;
+		size--;
+	}
+
+	return i;
 }
 
 static ssize_t uart16550_write(struct file *file,
@@ -94,13 +141,36 @@ static ssize_t uart16550_write(struct file *file,
 	struct uart16550_dev *data =
 		(struct uart16550_dev *) file->private_data;
 
-	size_t to_write = 0;
+	int i = 0;
+	char c;
+	unsigned long flags;
+	bool write_status = true;
 
 	// Un apel write blocant înseamnă că rutina de write apelată din user-space se va bloca
 	// până la scrierea a cel puţin un octet (buffer-ul de write din kernel este plin și
-	// nu se pot scrie date). 
+	// nu se pot scrie date).
+	if (wait_event_interruptible(data->wq_writes, atomic_read(&data->write_buf_size) < BUFFER_SIZE))
+			return -ERESTARTSYS;
 
-	return to_write;
+	while (size > 0) {
+		if (get_user(c, &user_buffer[i]))
+			return -EFAULT;
+
+		spin_lock_irqsave(&data->lock, flags);
+		write_status = write_char(c, data);
+		spin_unlock_irqrestore(&data->lock, flags);
+
+		if (write_status == false)
+			break;
+
+		i++;
+		size--;
+	}
+
+	// enable write interrupt
+
+
+	return i;
 }
 
 static int uart16550_line_info_set_baud(unsigned char baud)
@@ -119,7 +189,7 @@ static int uart16550_line_info_set_baud(unsigned char baud)
 			
 			if (option == OPTION_COM1 || option == OPTION_BOTH) {
 				/* Turn off interrupts */
-				outb(COM1_BASEPORT + UART_IER , 0);
+				outb(COM1_BASEPORT + UART_IER, 0);
 
 				/* Set DLAB ON - enable baud generator divisor latches */
 				outb(COM1_BASEPORT + UART_LCR, UART_LCR_DLAB);
@@ -133,7 +203,7 @@ static int uart16550_line_info_set_baud(unsigned char baud)
 
 			if (option == OPTION_COM2 || option == OPTION_BOTH) {
 				/* Turn off interrupts */
-				outb(COM2_BASEPORT + UART_IER , 0);
+				outb(COM2_BASEPORT + UART_IER, 0);
 
 				/* Set DLAB ON - enable baud generator divisor latches */
 				outb(COM2_BASEPORT + UART_LCR, UART_LCR_DLAB);
@@ -288,19 +358,8 @@ uart16550_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 	switch (cmd) {
 	case UART16550_IOCTL_SET_LINE:
 
-		// I tried nu merge...
-		/*if (!access_ok(arg, sizeof(struct uart16550_line_info))) {
-			ret = -EINVAL;
-			pr_err("%s: ioctl invalid communication parameters: invalid arg address\n", MODULE_NAME);
-			break;
-		}
-		copy_from_user(&uli, arg, sizeof(struct uart16550_line_info));*/
-
-		// asa nu iau segfault pe deadbeef, dar nu se trasnmit bine uli
-	//	uli = (struct uart16550_line_info *)(&arg);
-
-		// asa iau segfault pe deadbeef
-		uli = *(struct uart16550_line_info *)(&arg);
+		if (copy_from_user(&uli, (const void *)arg, sizeof(struct uart16550_line_info)))
+			return -EFAULT;
 
 		if (uart16550_line_info_set_baud(uli.baud)) {
 			ret = -EINVAL;
@@ -357,6 +416,51 @@ irqreturn_t uart16550_interrupt_handler(int irq_no, void *dev_id)
 	/* return IRQ_NONE;*/
 	/* clear interrupt-pending bit */
 	/* read from device or write to device*/
+	int base_addr;
+
+	if (my_data->port_type == 0)
+		base_addr = COM1_BASEPORT;
+	else
+		base_addr = COM2_BASEPORT;
+
+	// write interrupt
+	// TODO disable write interrupt when the kernel write_buffer is empty
+	// spinlock
+	// change write_buffer_size + put_idx
+	// spinlock
+	// wake_up(&my_data->wq_writes)
+
+
+	// read interrupt
+	// spinlock
+	// change read_buffer_size + get_idx
+	// spinlock
+	// wake_up(&my_data->wq_reads)
+
+
+	// base + 5
+	// interrupt status
+	// LSR
+	// THRI dezactivare
+
+	// outb(base_addr + UART_IIR, (inb(base_addr + UART_IIR)&(~UART_IIR_NO_INT)));	/* interrupts pending */
+	// int count = 0;
+	// do { c = inb(base_addr + UART_LSR);
+	// 		if (c & 1) {
+	// 			buffer_rec[count] = inb(base_addr);
+	// 			count++;
+	// 		}
+	// } while (c & 1);
+
+	// how to transmit a byte:
+	// 1. Read the Line Status Register - LSR
+	// 2. Transmit Holding Register is Empty? (yes) - THR bit 5
+	// 3. Write byte to the Transmitter Data Register
+
+	// how to receive a byte:
+	// 1. Read the Line Status Register - LCR
+	// 2. Received Data is Ready? (yes) - RDR bit 0
+	// 3. Read byte from the Receiver Data Register
  
 	return IRQ_HANDLED;
 }
@@ -375,6 +479,8 @@ static int init_char_dev(const char *dev_name, int start_minor, int nr_minors)
 
 	for (i = 0; i < nr_minors; i++) {
 		/* init and add cdev to kernel core */
+		init_waitqueue_head(&devs[i].wq_reads);
+		init_waitqueue_head(&devs[i].wq_writes);
 		cdev_init(&devs[i].cdev, &uart16550_fops);
 		cdev_add(&devs[i].cdev, MKDEV(major, start_minor + i), 1);
 	}
@@ -431,6 +537,11 @@ static int __init uart16550_init(void)
 	switch (option) {
 	case OPTION_BOTH:
 		pr_info("option both");
+		devs[0].port_type = 0;
+		devs[1].port_type = 1;
+		spin_lock_init(&devs[0].lock);
+		spin_lock_init(&devs[1].lock);
+
 		num_ports = 2;
 		err = init_char_dev("uart16550", COM1_MINOR, 2);
 		if (err != 0) {
@@ -459,6 +570,9 @@ static int __init uart16550_init(void)
 		break;
 
 	case OPTION_COM1:
+		devs[0].port_type = 0;
+		spin_lock_init(&devs[0].lock);
+
 		num_ports = 1;
 		pr_info("option com1");
 		err = init_char_dev("uart16550", COM1_MINOR, 1);
@@ -482,6 +596,9 @@ static int __init uart16550_init(void)
 		break;
 
 	case OPTION_COM2:
+		devs[0].port_type = 1;
+		spin_lock_init(&devs[0].lock);
+
 		num_ports = 1;
 		pr_info("option com2");
 		err = init_char_dev("uart16550", COM2_MINOR, 1);
