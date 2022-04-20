@@ -40,9 +40,7 @@
 #define UART_DEFAULT_PARITY	0x00
 
 #define UART_DLL			0x00	/* Out: Divisor Latch Low */
-#define UART_LCR			3		/* Out: Line Control Register */
-#define UART_LCR_DLAB		0x80	/* Divisor latch access bit */
-#define UART_IER			1	    /* Out: Interrupt Enable Register */
+
 
 #define UART_FCR				2		/* Out: FIFO Control Register */
 #define UART_FCR_ENABLE_FIFO	0x01	/* Enable the FIFO */
@@ -59,11 +57,6 @@
 #define UART_IER_THRI		0x02 		/* Enable Transmitter holding register int. */
 #define UART_IER_RDI		0x01 		/* Enable receiver data interrupt */
 
-#define UART_MCR			4		/* Out: Modem Control Register */
-#define UART_MCR_OUT2		0x08 	/* Out1 complement */
-#define UART_MCR_RTS		0x02 	/* RTS complement */
-#define UART_MCR_DTR		0x01 	/* DTR complement */
-
 
 #define UART_IIR			2		/* In:  Interrupt ID Register */
 #define UART_IIR_NO_INT		0x01 	/* No interrupts pending */
@@ -72,6 +65,19 @@
 #define UART_IIR_THRI		0x02 	/* Transmitter holding register empty */
 #define UART_IIR_RDI		0x04 	/* Receiver data interrupt */
 #define UART_IIR_RLSI		0x06 	/* Receiver line status interrupt */
+
+
+#define UART_LCR			3		/* Out: Line Control Register */
+#define UART_LCR_DLAB		0x80	/* Divisor latch access bit */
+
+#define UART_LSR			5	/* In:  Line Status Register */
+#define UART_LSR_DR			0x01 /* Receiver data ready */
+#define UART_LSR_THRE		0x20 /* Transmit-hold-register empty */
+
+#define UART_MCR			4		/* Out: Modem Control Register */
+#define UART_MCR_OUT2		0x08 	/* Out1 complement */
+#define UART_MCR_RTS		0x02 	/* RTS complement */
+#define UART_MCR_DTR		0x01 	/* DTR complement */
 
 #endif
 
